@@ -1,0 +1,47 @@
+# 1. Primeiro o application.yml do gateway (arquivo pequeno)
+cat > ./microservices-gateway-auth/api-gateway/src/main/resources/application.yml << 'EOF'
+server:
+  port: 8080
+
+spring:
+  application:
+    name: api-gateway
+  cloud:
+    gateway:
+      discovery:
+        locator:
+          enabled: true
+          lower-case-service-id: true
+      routes:
+        - id: auth-service
+          uri: lb://AUTH-SERVICE
+          predicates:
+            - Path=/auth/**
+          filters:
+            - StripPrefix=0
+        - id: user-service
+          uri: lb://USER-SERVICE
+          predicates:
+            - Path=/users/**
+          filters:
+            - StripPrefix=0
+
+eureka:
+  client:
+    service-url:
+      defaultZone: http://eureka-server:8761/eureka/
+    register-with-eureka: true
+    fetch-registry: true
+  instance:
+    prefer-ip-address: false
+    hostname: api-gateway
+
+jwt:
+  secret: your-256-bit-secret-key-change-this-in-production-must-be-at-least-256-bits
+
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+    com.tharsis.gateway: DEBUG
+EOF
+

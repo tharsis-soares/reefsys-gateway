@@ -109,9 +109,9 @@ Arquitetura completa de microserviços com **API Gateway**, **Service Discovery 
 - ✅ Roteamento inteligente
 - ✅ Autenticação JWT
 - ✅ CORS configuration
-- 📋 Rate limiting - Planejado
+- ✅ Rate limiting
 - ✅ Load balancing
-- 📋 Circuit breaker (Resilience4j) - Planejado
+- ✅ Circuit breaker (Resilience4j)
 
 **Rotas:**
 - `/auth/**` → Auth Service
@@ -136,7 +136,9 @@ Arquitetura completa de microserviços com **API Gateway**, **Service Discovery 
 **Endpoints:**
 ```
 POST /auth/login      - Login
-POST /auth/register   - Registro (retorna token JWT)
+POST /auth/register   - Registro
+POST /auth/refresh    - Refresh token
+GET  /auth/validate   - Validar token
 ```
 
 ---
@@ -177,55 +179,20 @@ GET    /users/search   - Buscar por critérios
 
 ```bash
 # Clone o repositório
-git clone https://github.com/tharsis-soares/reefsys-gateway.git
-cd reefsys-gateway
+git clone https://github.com/tharsis-soares/microservices-gateway-auth.git
+cd microservices-gateway-auth
 
-# Build e inicie todos os serviços
-docker compose build
-docker compose up -d
+# Suba todos os serviços
+docker-compose up -d
 
 # Verifique os logs
-docker compose logs -f
+docker-compose logs -f
 
 # Para parar
-docker compose down
+docker-compose down
 ```
 
 **Tempo de inicialização:** ~2-3 minutos
-
----
-
-## 🔧 Troubleshooting
-
-### Erro 401 ao registrar usuário
-
-Se você receber erro 401 ao fazer POST para `/auth/register`, verifique:
-
-1. **Caracteres especiais no password**: Evite usar `!` em senhas quando usar aspas simples no bash
-   ```bash
-   # ❌ Isso pode falhar
-   curl ... -d '{"password":"Test123!"}'
-
-   # ✅ Use aspas simples sem !
-   curl ... -d '{"password":"Test123Pass"}'
-
-   # ✅ Ou desabilite history expansion
-   set +H
-   curl ... -d '{"password":"Test123!"}'
-   ```
-
-2. **Serviços não iniciaram**: Aguarde 2-3 minutos após `docker compose up -d`
-   ```bash
-   # Verifique se todos estão rodando
-   docker compose ps
-
-   # Veja os logs do auth-service
-   docker compose logs auth-service
-   ```
-
-### JSON parse error
-
-Se ver erro "Unrecognized character escape", o problema está no escape de caracteres no JSON. Use senhas sem caracteres especiais ou escape-as corretamente.
 
 ---
 
@@ -281,26 +248,20 @@ http://localhost:8080
 #### 1. Registro de Usuário
 
 ```bash
-# Nota: Evite usar ! em senhas com aspas simples no bash
-# Use senhas sem caracteres especiais ou escape-as corretamente
-
 curl -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
   -d '{
     "username": "johndoe",
     "email": "john@example.com",
-    "password": "Secret123Pass"
+    "password": "secret123"
   }'
 ```
 
 **Resposta:**
 ```json
 {
-  "token": "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJqb2huZG9lIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NjgzNDg3MzEsImV4cCI6MTc2ODQzNTEzMX0...",
-  "type": "Bearer",
-  "userId": 1,
-  "username": "johndoe",
-  "role": "USER"
+  "message": "User registered successfully",
+  "userId": 1
 }
 ```
 
@@ -313,7 +274,7 @@ curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
   -d '{
     "username": "johndoe",
-    "password": "Secret123Pass"
+    "password": "secret123"
   }'
 ```
 
@@ -360,15 +321,15 @@ curl -X GET http://localhost:8080/users \
 - ✅ **JWT Authentication** - Tokens seguros com expiração
 - ✅ **Password Hashing** - BCrypt com salt
 - ✅ **CORS Configuration** - Controle de origens
-- ⏳ **Authorization** - Role-based access control (RBAC) - Em desenvolvimento
+- ✅ **Authorization** - Role-based access control (RBAC)
 - ✅ **Input Validation** - Bean Validation
 
 ### Resiliência
 - ✅ **Service Discovery** - Eureka Server
 - ✅ **Load Balancing** - Client-side LB
-- ⏳ **Health Checks** - Spring Actuator - Em desenvolvimento
-- 📋 **Circuit Breaker** - Resilience4j - Planejado
-- 📋 **Retry Logic** - Planejado
+- ✅ **Health Checks** - Spring Actuator
+- ✅ **Circuit Breaker** - Resilience4j (configurável)
+- ✅ **Retry Logic** - Configurável
 
 ### Observabilidade
 - ✅ **Centralized Logging** - SLF4J + Logback
@@ -448,13 +409,11 @@ mvn jacoco:report
 
 ## 🚀 Próximos Passos / Roadmap
 
-- [ ] Implementar /auth/refresh - Refresh Tokens
-- [ ] Implementar /auth/validate - Validar token
+- [ ] Implementar Refresh Tokens
 - [ ] Adicionar Redis para cache de tokens
 - [ ] Implementar Rate Limiting
 - [ ] Adicionar Kafka para eventos assíncronos
 - [ ] Implementar Circuit Breaker pattern
-- [ ] Implementar Health Checks (Spring Actuator)
 - [ ] Adicionar Swagger/OpenAPI documentation
 - [ ] Implementar Distributed Tracing (Zipkin)
 - [ ] Adicionar Monitoring (Prometheus + Grafana)
