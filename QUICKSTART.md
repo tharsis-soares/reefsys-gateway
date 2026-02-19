@@ -4,24 +4,24 @@
 
 ### 1. Clone o Repositório
 ```bash
-git clone https://github.com/tharsis-soares/microservices-gateway-auth.git
-cd microservices-gateway-auth
+git clone https://github.com/tharsis-soares/reefsys-gateway.git
+cd reefsys-gateway
 ```
 
 ### 2. Suba os Serviços
 ```bash
-docker-compose up -d
+docker compose up -d
 ```
 
 ### 3. Aguarde os Serviços Iniciarem (~2 minutos)
 ```bash
-docker-compose logs -f
+docker compose logs -f
 ```
 
 Aguarde até ver:
 - ✅ Eureka Server iniciado (porta 8761)
 - ✅ Auth Service registrado no Eureka
-- ✅ User Service registrado no Eureka  
+- ✅ User Service registrado no Eureka
 - ✅ API Gateway iniciado (porta 8080)
 
 ### 4. Verifique o Eureka Dashboard
