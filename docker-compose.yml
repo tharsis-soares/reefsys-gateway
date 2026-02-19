@@ -1,52 +1,57 @@
-version: '3.8'
 services:
   postgres:
     image: postgres:15-alpine
     container_name: microservices-postgres
+    restart: unless-stopped
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_MULTIPLE_DATABASES: auth_db,user_db
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     ports:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./microservices-gateway-auth/scripts/init-databases.sh:/docker-entrypoint-initdb.d/init-databases.sh
+      - ./scripts/init-databases.sql:/docker-entrypoint-initdb.d/init-databases.sql
     networks:
       - microservices-network
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auth_db"]
       interval: 10s
       timeout: 5s
       retries: 5
 
   eureka-server:
     build:
-      context: ./microservices-gateway-auth
+      context: .
       dockerfile: eureka-server/Dockerfile
     container_name: eureka-server
+    restart: unless-stopped
     ports:
       - "8761:8761"
     networks:
       - microservices-network
     healthcheck:
-      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8761/actuator/health"]
-      interval: 30s
+      test: ["CMD", "curl", "-f", "http://localhost:8761/actuator/health"]
+      interval: 15s
       timeout: 10s
       retries: 5
+      start_period: 30s
 
   auth-service:
     build:
-      context: ./microservices-gateway-auth
+      context: .
       dockerfile: auth-service/Dockerfile
     container_name: auth-service
+    restart: unless-stopped
     ports:
       - "8081:8081"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth_db
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
-      EUREKA_INSTANCE_HOSTNAME: auth-service
-      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://microservices-postgres:5432/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - TZ=${TZ}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -54,19 +59,28 @@ services:
         condition: service_healthy
     networks:
       - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8081/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   user-service:
     build:
-      context: ./microservices-gateway-auth
+      context: .
       dockerfile: user-service/Dockerfile
     container_name: user-service
+    restart: unless-stopped
     ports:
       - "8082:8082"
     environment:
-      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/user_db
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
-      EUREKA_INSTANCE_HOSTNAME: user-service
-      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://microservices-postgres:5432/${POSTGRES_DB}
+      - SPRING_DATASOURCE_USERNAME=${POSTGRES_USER}
+      - SPRING_DATASOURCE_PASSWORD=${POSTGRES_PASSWORD}
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - TZ=${TZ}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,27 +88,40 @@ services:
         condition: service_healthy
     networks:
       - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8082/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
 
   api-gateway:
     build:
-      context: ./microservices-gateway-auth
+      context: .
       dockerfile: api-gateway/Dockerfile
     container_name: api-gateway
+    restart: unless-stopped
     ports:
       - "8080:8080"
     environment:
-      EUREKA_CLIENT_SERVICEURL_DEFAULTZONE: http://eureka-server:8761/eureka/
-      EUREKA_INSTANCE_HOSTNAME: api-gateway
-      EUREKA_INSTANCE_PREFER_IP_ADDRESS: "false"
+      - EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://eureka-server:8761/eureka/
+      - TZ=${TZ}
+      - JWT_SECRET=${JWT_SECRET}
     depends_on:
       eureka-server:
         condition: service_healthy
       auth-service:
-        condition: service_started
+        condition: service_healthy
       user-service:
-        condition: service_started
+        condition: service_healthy
     networks:
       - microservices-network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
 
 volumes:
   postgres_data:

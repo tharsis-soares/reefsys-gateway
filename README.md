@@ -19,7 +19,6 @@ Arquitetura completa de microserviços com **API Gateway**, **Service Discovery 
 - [Como Executar](#-como-executar)
 - [Endpoints](#-endpoints)
 - [Features](#-features)
-- [Diagramas](#-diagramas)
 
 ---
 
@@ -54,10 +53,12 @@ Arquitetura completa de microserviços com **API Gateway**, **Service Discovery 
       └────────┬───────┘
                ▼
         ┌─────────────┐
-        │ PostgreSQL  │
-        │  (2 DBs)    │
+        │ PostgreSQL  │ :5433
+        │  (auth_db)  │
         └─────────────┘
 ```
+
+> **Nota:** auth-service e user-service compartilham o banco `auth_db` nesta versão.
 
 ---
 
@@ -70,417 +71,192 @@ Arquitetura completa de microserviços com **API Gateway**, **Service Discovery 
   - Spring Cloud Gateway
   - Netflix Eureka (Service Discovery)
 - **Spring Security**
-- **Spring Data JPA**
+- **Spring Data JPA / Hibernate 6**
+- **Spring Boot Actuator**
 
 ### Database
-- **PostgreSQL 15**
+- **PostgreSQL 15 Alpine**
 
 ### Authentication
-- **JWT (JSON Web Tokens)**
-- **BCrypt** (password hashing)
+- **JWT (HS512)** com expiração de 24h
+- **BCrypt** para hash de senhas
 
 ### DevOps
 - **Docker & Docker Compose**
-- **Maven**
+- **Maven 3.9**
+- **Multi-stage Docker builds**
 
 ---
 
 ## 🎯 Microserviços
 
-### 1. Eureka Server (Service Discovery)
-**Porta:** 8761  
-**Função:** Registro e descoberta de serviços
-
-**Features:**
-- ✅ Dashboard de monitoramento
-- ✅ Health checks automáticos
-- ✅ Load balancing
-- ✅ Failover handling
-
-**Dashboard:** http://localhost:8761
-
----
+### 1. Eureka Server — Service Discovery
+**Porta:** 8761
+- Dashboard de monitoramento
+- Registro automático de serviços
+- Health checks
+- **Dashboard:** http://localhost:8761
 
 ### 2. API Gateway
-**Porta:** 8080  
-**Função:** Ponto de entrada único para todos os serviços
-
-**Features:**
-- ✅ Roteamento inteligente
-- ✅ Autenticação JWT
-- ✅ CORS configuration
-- 📋 Rate limiting - Planejado
-- ✅ Load balancing
-- 📋 Circuit breaker (Resilience4j) - Planejado
-
-**Rotas:**
-- `/auth/**` → Auth Service
-- `/users/**` → User Service (protegido por JWT)
-
----
+**Porta:** 8080
+- Roteamento: `/auth/**` → Auth Service, `/users/**` → User Service
+- Validação de JWT antes de repassar para os serviços
+- CORS configurado
 
 ### 3. Auth Service
-**Porta:** 8081  
-**Função:** Autenticação e gestão de tokens JWT
-
-**Features:**
-- ✅ Login com username/password
-- ✅ Registro de novos usuários
-- ✅ Geração de JWT tokens
-- ✅ Validação de tokens
-- ✅ Refresh tokens
-- ✅ Password hashing (BCrypt)
-
-**Database:** `auth_db` (PostgreSQL)
-
-**Endpoints:**
-```
-POST /auth/login      - Login
-POST /auth/register   - Registro (retorna token JWT)
-```
-
----
+**Porta:** 8081
+- Login e registro de usuários
+- Geração de JWT (HS512)
+- BCrypt para senhas
+- **Endpoints:**
+  ```
+  POST /auth/register
+  POST /auth/login
+  ```
 
 ### 4. User Service
-**Porta:** 8082  
-**Função:** Gerenciamento de usuários (CRUD)
-
-**Features:**
-- ✅ CRUD completo de usuários
-- ✅ Busca por ID, username, email
-- ✅ Perfis e permissões
-- ✅ Soft delete
-- ✅ Auditoria (created_at, updated_at)
-
-**Database:** `user_db` (PostgreSQL)
-
-**Endpoints:**
-```
-GET    /users          - Listar todos
-GET    /users/{id}     - Buscar por ID
-POST   /users          - Criar usuário
-PUT    /users/{id}     - Atualizar usuário
-DELETE /users/{id}     - Deletar usuário
-GET    /users/search   - Buscar por critérios
-```
+**Porta:** 8082
+- CRUD de usuários (requer JWT válido)
+- Auditoria com `createdAt` / `updatedAt`
+- **Endpoints:**
+  ```
+  GET    /users
+  GET    /users/{id}
+  POST   /users
+  PUT    /users/{id}
+  DELETE /users/{id}
+  ```
 
 ---
 
 ## 🚀 Como Executar
 
 ### Pré-requisitos
-- Docker e Docker Compose
-- Java 17+ (se for rodar localmente sem Docker)
-- Maven 3.8+ (se for rodar localmente)
+- Docker e Docker Compose instalados
 
-### Opção 1: Docker Compose (Recomendado)
-
+### 1. Clone o repositório
 ```bash
-# Clone o repositório
-git clone https://github.com/tharsis-soares/reefsys-gateway.git
-cd reefsys-gateway
-
-# Build e inicie todos os serviços
-docker compose build
-docker compose up -d
-
-# Verifique os logs
-docker compose logs -f
-
-# Para parar
-docker compose down
+git clone https://github.com/tharsis-soares/microservices-gateway-auth.git
+cd microservices-gateway-auth
 ```
 
-**Tempo de inicialização:** ~2-3 minutos
-
----
-
-## 🔧 Troubleshooting
-
-### Erro 401 ao registrar usuário
-
-Se você receber erro 401 ao fazer POST para `/auth/register`, verifique:
-
-1. **Caracteres especiais no password**: Evite usar `!` em senhas quando usar aspas simples no bash
-   ```bash
-   # ❌ Isso pode falhar
-   curl ... -d '{"password":"Test123!"}'
-
-   # ✅ Use aspas simples sem !
-   curl ... -d '{"password":"Test123Pass"}'
-
-   # ✅ Ou desabilite history expansion
-   set +H
-   curl ... -d '{"password":"Test123!"}'
-   ```
-
-2. **Serviços não iniciaram**: Aguarde 2-3 minutos após `docker compose up -d`
-   ```bash
-   # Verifique se todos estão rodando
-   docker compose ps
-
-   # Veja os logs do auth-service
-   docker compose logs auth-service
-   ```
-
-### JSON parse error
-
-Se ver erro "Unrecognized character escape", o problema está no escape de caracteres no JSON. Use senhas sem caracteres especiais ou escape-as corretamente.
-
----
-
-### Opção 2: Execução Local
-
+### 2. Crie o arquivo `.env`
 ```bash
-# 1. Inicie o PostgreSQL
-docker run -d \
-  --name postgres \
-  -e POSTGRES_PASSWORD=postgres \
-  -p 5432:5432 \
-  postgres:15-alpine
-
-# 2. Crie os bancos de dados
-docker exec -it postgres psql -U postgres -c "CREATE DATABASE auth_db;"
-docker exec -it postgres psql -U postgres -c "CREATE DATABASE user_db;"
-
-# 3. Inicie os serviços na ordem:
-
-# Eureka Server
-cd eureka-server
-mvn spring-boot:run
-
-# Auth Service (em outro terminal)
-cd auth-service
-mvn spring-boot:run
-
-# User Service (em outro terminal)
-cd user-service
-mvn spring-boot:run
-
-# API Gateway (em outro terminal)
-cd api-gateway
-mvn spring-boot:run
+cat > .env << 'EOF'
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_DB=auth_db
+JWT_SECRET=zdtlY9V7X8Pq2M5N6B3C4V5B6N7M8J9K0L1A2S3D4F5G6H7J8K9L0Q1W2E3R4T5Y
+TZ=America/Sao_Paulo
+EOF
 ```
+
+### 3. Suba os serviços
+```bash
+docker compose up -d --build
+```
+
+**Tempo de inicialização:** ~3-4 minutos (Maven build incluído)
+
+### 4. Verifique o Eureka Dashboard
+http://localhost:8761 — você deve ver 3 serviços: `API-GATEWAY`, `AUTH-SERVICE`, `USER-SERVICE`
 
 ---
 
 ## 📡 Endpoints
 
-### Eureka Dashboard
-```
-http://localhost:8761
-```
-
-### API Gateway (Ponto de Entrada)
-```
-http://localhost:8080
-```
-
-### Exemplo de Uso
-
-#### 1. Registro de Usuário
-
+### Registrar usuário
 ```bash
-# Nota: Evite usar ! em senhas com aspas simples no bash
-# Use senhas sem caracteres especiais ou escape-as corretamente
-
 curl -X POST http://localhost:8080/auth/register \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "email": "john@example.com",
-    "password": "Secret123Pass"
-  }'
+  -d '{"username":"johndoe","email":"john@example.com","password":"secret123"}'
 ```
 
-**Resposta:**
-```json
-{
-  "token": "eyJhbGciOiJIUzUxMiJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJqb2huZG9lIiwicm9sZSI6IlVTRVIiLCJpYXQiOjE3NjgzNDg3MzEsImV4cCI6MTc2ODQzNTEzMX0...",
-  "type": "Bearer",
-  "userId": 1,
-  "username": "johndoe",
-  "role": "USER"
-}
-```
-
----
-
-#### 2. Login
-
+### Login
 ```bash
 curl -X POST http://localhost:8080/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "johndoe",
-    "password": "Secret123Pass"
-  }'
+  -d '{"username":"johndoe","password":"secret123"}'
 ```
 
-**Resposta:**
-```json
-{
-  "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-  "type": "Bearer",
-  "userId": 1,
-  "username": "johndoe",
-  "role": "USER"
-}
-```
-
----
-
-#### 3. Acessar User Service (com token)
-
+### Listar usuários (com token)
 ```bash
 TOKEN="seu_token_aqui"
-
-curl -X GET http://localhost:8080/users \
-  -H "Authorization: Bearer $TOKEN"
+curl http://localhost:8080/users -H "Authorization: Bearer $TOKEN"
 ```
 
-**Resposta:**
-```json
-[
-  {
-    "id": 1,
-    "username": "johndoe",
-    "email": "john@example.com",
-    "role": "USER",
-    "createdAt": "2026-01-11T10:30:00"
-  }
-]
+### Teste completo automatizado
+```bash
+TOKEN=$(curl -s -X POST http://localhost:8080/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"username":"johndoe","password":"secret123"}' \
+  | grep -o '"token":"[^"]*"' | cut -d'"' -f4)
+
+curl http://localhost:8080/users -H "Authorization: Bearer $TOKEN"
+curl http://localhost:8080/users/1 -H "Authorization: Bearer $TOKEN"
 ```
 
 ---
 
-## ✨ Features
+## 📊 Portas dos Serviços
 
-### Segurança
-- ✅ **JWT Authentication** - Tokens seguros com expiração
-- ✅ **Password Hashing** - BCrypt com salt
-- ✅ **CORS Configuration** - Controle de origens
-- ⏳ **Authorization** - Role-based access control (RBAC) - Em desenvolvimento
-- ✅ **Input Validation** - Bean Validation
-
-### Resiliência
-- ✅ **Service Discovery** - Eureka Server
-- ✅ **Load Balancing** - Client-side LB
-- ⏳ **Health Checks** - Spring Actuator - Em desenvolvimento
-- 📋 **Circuit Breaker** - Resilience4j - Planejado
-- 📋 **Retry Logic** - Planejado
-
-### Observabilidade
-- ✅ **Centralized Logging** - SLF4J + Logback
-- ✅ **Distributed Tracing** - Spring Cloud Sleuth (opcional)
-- ✅ **Health Endpoints** - /actuator/health
-- ✅ **Metrics** - Micrometer (opcional)
-
-### DevOps
-- ✅ **Containerization** - Docker
-- ✅ **Orchestration** - Docker Compose
-- ✅ **Configuration** - Externalized config
-- ✅ **Multi-stage builds** - Otimização de imagens
+| Serviço | Porta | URL |
+|---------|-------|-----|
+| API Gateway | 8080 | http://localhost:8080 |
+| Eureka Server | 8761 | http://localhost:8761 |
+| Auth Service | 8081 | http://localhost:8081 (direto) |
+| User Service | 8082 | http://localhost:8082 (direto) |
+| PostgreSQL | 5433 | localhost:5433 |
 
 ---
 
-## 📊 Diagramas
-
-### Fluxo de Autenticação
-
-```
-1. Client → API Gateway: POST /auth/login {username, password}
-2. API Gateway → Auth Service: Forward request
-3. Auth Service → Database: Validate credentials
-4. Database → Auth Service: User data
-5. Auth Service: Generate JWT token
-6. Auth Service → API Gateway: JWT token
-7. API Gateway → Client: JWT token
-```
-
-### Fluxo de Requisição Protegida
-
-```
-1. Client → API Gateway: GET /users (with JWT token)
-2. API Gateway: Validate JWT token
-3. API Gateway: Extract userId from token
-4. API Gateway → User Service: Forward request + X-User-Id header
-5. User Service: Process request
-6. User Service → API Gateway: Response
-7. API Gateway → Client: Response
-```
-
----
-
-## 🔧 Configuração
-
-### Variáveis de Ambiente
-
-**Auth Service:**
-```env
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5432/auth_db
-JWT_SECRET=your-secret-key-must-be-at-least-256-bits
-JWT_EXPIRATION=86400000  # 24 horas em ms
-```
-
-**API Gateway:**
-```env
-EUREKA_CLIENT_SERVICEURL_DEFAULTZONE=http://localhost:8761/eureka/
-JWT_SECRET=your-secret-key-must-be-at-least-256-bits
-```
-
----
-
-## 🧪 Testes
+## 🔧 Comandos Úteis
 
 ```bash
-# Testes unitários
-mvn test
+# Ver status dos containers
+docker compose ps
 
-# Testes de integração
-mvn verify
+# Ver logs de um serviço
+docker compose logs -f auth-service
 
-# Cobertura de código
-mvn jacoco:report
+# Reiniciar um serviço
+docker compose restart auth-service
+
+# Parar tudo
+docker compose down
+
+# Parar e limpar banco de dados
+docker compose down -v
+
+# Rebuild completo
+docker compose up -d --force-recreate --build
 ```
 
 ---
 
-## 🚀 Próximos Passos / Roadmap
+## ✨ Features Implementadas
 
-- [ ] Implementar /auth/refresh - Refresh Tokens
-- [ ] Implementar /auth/validate - Validar token
-- [ ] Adicionar Redis para cache de tokens
-- [ ] Implementar Rate Limiting
-- [ ] Adicionar Kafka para eventos assíncronos
-- [ ] Implementar Circuit Breaker pattern
-- [ ] Implementar Health Checks (Spring Actuator)
-- [ ] Adicionar Swagger/OpenAPI documentation
-- [ ] Implementar Distributed Tracing (Zipkin)
-- [ ] Adicionar Monitoring (Prometheus + Grafana)
+- ✅ JWT Authentication (HS512, 24h de validade)
+- ✅ Password Hashing (BCrypt)
+- ✅ Service Discovery (Eureka)
+- ✅ API Gateway com roteamento e validação JWT
+- ✅ Health Checks (Spring Actuator + Docker healthcheck)
+- ✅ Restart automático (`restart: unless-stopped`)
+- ✅ Configuração via `.env` (secrets fora do código)
+- ✅ Persistência de dados (volume Docker nomeado)
+- ✅ Multi-stage Docker builds (imagens otimizadas)
+- ✅ RBAC básico (roles: ADMIN, MANAGER, SUB, USER)
+
+## 🚀 Roadmap
+
+- [ ] Refresh Tokens
+- [ ] Redis para cache de tokens invalidados
+- [ ] Rate Limiting no Gateway
+- [ ] Swagger/OpenAPI documentation
 - [ ] CI/CD com GitHub Actions
-- [ ] Deploy em Kubernetes
-
----
-
-## 📚 Referências
-
-- [Spring Cloud Gateway](https://spring.io/projects/spring-cloud-gateway)
-- [Netflix Eureka](https://github.com/Netflix/eureka)
-- [JWT.io](https://jwt.io/)
-- [Microservices Patterns](https://microservices.io/patterns/index.html)
-
----
-
-## 🤝 Contribuições
-
-Contribuições são bem-vindas! Sinta-se à vontade para abrir issues ou pull requests.
-
----
-
-## 📝 Licença
-
-Este projeto está sob a licença Apache 2.0 - veja o arquivo [LICENSE](LICENSE) para detalhes.
+- [ ] Deploy em Oracle Cloud / Kubernetes
+- [ ] Distributed Tracing (Zipkin)
+- [ ] Monitoring (Prometheus + Grafana)
 
 ---
 
@@ -490,12 +266,6 @@ Este projeto está sob a licença Apache 2.0 - veja o arquivo [LICENSE](LICENSE)
 - GitHub: [@tharsis-soares](https://github.com/tharsis-soares)
 - LinkedIn: [linkedin.com/in/tharsis-soares](https://linkedin.com/in/tharsis-soares)
 - Email: tharsissoares@hotmail.com
-
----
-
-## ⭐ Mostre seu Apoio
-
-Se este projeto te ajudou, considere dar uma ⭐ no repositório!
 
 ---
 
