@@ -44,3 +44,4 @@ logs/
 # Application properties with secrets
 *-local.properties
 *-local.yml
+.env

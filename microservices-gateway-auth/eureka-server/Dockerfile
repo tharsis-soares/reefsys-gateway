@@ -7,6 +7,7 @@ RUN mvn clean package -DskipTests -f eureka-server/pom.xml
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
+RUN apk add --no-cache curl
 COPY --from=build /app/eureka-server/target/*.jar app.jar
 EXPOSE 8761
 ENTRYPOINT ["java", "-jar", "app.jar"]

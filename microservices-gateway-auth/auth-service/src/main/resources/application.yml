@@ -5,20 +5,33 @@ spring:
   application:
     name: auth-service
   datasource:
-    url: jdbc:postgresql://postgres:5432/auth_db
-    username: postgres
-    password: postgres
+    # No Docker, usamos o nome do serviço 'postgres'. Fora dele, use 'localhost'.
+    url: jdbc:postgresql://${DB_HOST:postgres}:5432/auth_db
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
   jpa:
     database-platform: org.hibernate.dialect.PostgreSQLDialect
     hibernate:
       ddl-auto: update
-    show-sql: true
+    show-sql: false # Mude para false em prod para não poluir os logs da Oracle Cloud
+    properties:
+      hibernate:
+        format_sql: true
 
 eureka:
   client:
     service-url:
       defaultZone: http://eureka-server:8761/eureka/
+  instance:
+    prefer-ip-address: true
 
 jwt:
-  secret: your-256-bit-secret-key-change-this-in-production-must-be-at-least-256-bits
-  expiration: 86400000
+  secret: "zdtlY9V7X8Pq2M5N6B3C4V5B6N7M8J9K0L1A2S3D4F5G6H7J8K9L0Q1W2E3R4T5Y"
+  expiration: 86400000 # 24 horas
+
+# Essencial para o Healthcheck do Docker Compose
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

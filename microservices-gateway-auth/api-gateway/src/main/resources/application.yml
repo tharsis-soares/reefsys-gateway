@@ -1,5 +1,3 @@
-# 1. Primeiro o application.yml do gateway (arquivo pequeno)
-cat > ./microservices-gateway-auth/api-gateway/src/main/resources/application.yml << 'EOF'
 server:
   port: 8080
 
@@ -13,35 +11,40 @@ spring:
           enabled: true
           lower-case-service-id: true
       routes:
+        # Rota de Autenticação (Aberta)
         - id: auth-service
           uri: lb://AUTH-SERVICE
           predicates:
             - Path=/auth/**
-          filters:
-            - StripPrefix=0
+
+        # Rota de Usuários (Protegida pelo seu Filtro)
         - id: user-service
           uri: lb://USER-SERVICE
           predicates:
             - Path=/users/**
-          filters:
-            - StripPrefix=0
+          # Adicionado para ativar sua validação
 
 eureka:
   client:
     service-url:
-      defaultZone: http://eureka-server:8761/eureka/
+      defaultZone: ${EUREKA_SERVER_URL:http://eureka-server:8761/eureka/}
     register-with-eureka: true
     fetch-registry: true
   instance:
-    prefer-ip-address: false
-    hostname: api-gateway
+    prefer-ip-address: true # Melhor para ambientes Docker e Cloud
+    instance-id: ${spring.application.name}:${random.value}
 
 jwt:
-  secret: your-256-bit-secret-key-change-this-in-production-must-be-at-least-256-bits
+  secret: "zdtlY9V7X8Pq2M5N6B3C4V5B6N7M8J9K0L1A2S3D4F5G6H7J8K9L0Q1W2E3R4T5Y"
 
 logging:
   level:
+    root: INFO
     org.springframework.cloud.gateway: DEBUG
     com.tharsis.gateway: DEBUG
-EOF
+
+
+
+
+
 

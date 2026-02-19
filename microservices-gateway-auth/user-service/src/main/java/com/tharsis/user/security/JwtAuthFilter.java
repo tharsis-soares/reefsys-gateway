@@ -43,6 +43,9 @@ public class JwtAuthFilter extends OncePerRequestFilter {
                 response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 response.setContentType("application/json");
                 response.getWriter().write("{\"error\": \"Invalid or expired token\"}");
+                System.out.println("DEBUG JWT: " + e.getMessage()); // Adicione isso aqui!
+                e.printStackTrace(); // Isso vai mostrar se é assinatura, expiração ou formato
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
                 return;
             }
         }

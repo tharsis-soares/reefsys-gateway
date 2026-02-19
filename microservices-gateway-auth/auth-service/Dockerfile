@@ -7,5 +7,6 @@ RUN mvn clean package -DskipTests -f auth-service/pom.xml
 
 FROM eclipse-temurin:17-jre-alpine
 WORKDIR /app
+RUN apk add --no-cache curl
 COPY --from=build /app/auth-service/target/*.jar app.jar
 ENTRYPOINT ["java", "-jar", "app.jar"]

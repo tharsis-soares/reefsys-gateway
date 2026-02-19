@@ -15,9 +15,7 @@ public class SecurityConfig {
         return http
             .csrf(csrf -> csrf.disable())
             .authorizeExchange(exchange -> exchange
-                .pathMatchers("/auth/**").permitAll()
-                .pathMatchers("/eureka/**").permitAll()
-                .anyExchange().authenticated()
+                .anyExchange().permitAll()  // ⭐ Gateway só roteia, não autentica
             )
             .build();
     }
