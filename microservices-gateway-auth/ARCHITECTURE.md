@@ -2,7 +2,7 @@
 
 ## Visão Geral
 
-Este documento descreve a arquitetura de microserviços implementada neste projeto.
+Arquitetura de microserviços com API Gateway, Service Discovery (Eureka), autenticação JWT e PostgreSQL. Todos os serviços rodam em Docker com healthchecks e restart automático.
 
 ---
 
@@ -16,13 +16,9 @@ Este documento descreve a arquitetura de microserviços implementada neste proje
                                 ▼
         ┌───────────────────────────────────────────┐
         │          API GATEWAY (Port 8080)          │
-        │  ┌─────────────────────────────────────┐  │
-        │  │  • Routing                          │  │
-        │  │  • JWT Validation                   │  │
-        │  │  • CORS Configuration               │  │
-        │  │  • Rate Limiting                    │  │
-        │  │  • Load Balancing                   │  │
-        │  └─────────────────────────────────────┘  │
+        │  • Routing                                │
+        │  • JWT Validation                         │
+        │  • CORS Configuration                     │
         └───────────────────────┬───────────────────┘
                                 │
                     ┌───────────┴───────────┐
@@ -31,11 +27,9 @@ Este documento descreve a arquitetura de microserviços implementada neste proje
         ┌─────────────────────┐ ┌─────────────────────┐
         │   AUTH SERVICE      │ │   USER SERVICE      │
         │   (Port 8081)       │ │   (Port 8082)       │
-        │                     │ │                     │
         │  • Login            │ │  • CRUD Users       │
-        │  • Register         │ │  • Search           │
-        │  • JWT Generation   │ │  • Permissions      │
-        │  • Token Validation │ │  • Profiles         │
+        │  • Register         │ │  • JWT validation   │
+        │  • JWT Generation   │ │  • RBAC             │
         └──────────┬──────────┘ └──────────┬──────────┘
                    │                       │
                    └───────────┬───────────┘
@@ -44,295 +38,145 @@ Este documento descreve a arquitetura de microserviços implementada neste proje
                     ┌──────────────────────┐
                     │   EUREKA SERVER      │
                     │   (Port 8761)        │
-                    │                      │
                     │  • Service Registry  │
                     │  • Health Monitoring │
-                    │  • Load Balancing    │
                     └──────────────────────┘
                                │
                                ▼
                 ┌──────────────────────────────┐
-                │      PostgreSQL Database      │
-                │        (Port 5432)            │
-                │  ┌──────────┐  ┌──────────┐  │
-                │  │ auth_db  │  │ user_db  │  │
-                │  └──────────┘  └──────────┘  │
+                │   PostgreSQL 15 (Port 5433)  │
+                │         auth_db              │
+                │  (auth-service + user-service│
+                │   compartilham o mesmo banco)│
                 └──────────────────────────────┘
 ```
 
 ---
 
-## Fluxo de Requisição Completo
+## Fluxo de Autenticação
 
-### 1. Registro de Novo Usuário
-
+### Registro
 ```
-[Client] 
-   ↓ POST /auth/register
-   ↓ { username, email, password }
-[API Gateway] 
-   ↓ Route: /auth/** → AUTH-SERVICE
-   ↓ (sem validação JWT - rota pública)
-[Auth Service]
-   ↓ Validate input
-   ↓ Check if user exists
-   ↓ Hash password (BCrypt)
-   ↓ Save to database
-[PostgreSQL - auth_db]
-   ↓ INSERT INTO users
-[Auth Service]
-   ↓ Return success
-[API Gateway]
-   ↓ Forward response
-[Client]
-   ✓ User created
+Client → POST /auth/register → API Gateway → Auth Service
+Auth Service: valida input → hash BCrypt → salva no banco
+Auth Service → retorna JWT token
 ```
 
-### 2. Login e Geração de Token
-
+### Login
 ```
-[Client]
-   ↓ POST /auth/login
-   ↓ { username, password }
-[API Gateway]
-   ↓ Route: /auth/** → AUTH-SERVICE
-[Auth Service]
-   ↓ Find user by username
-[PostgreSQL - auth_db]
-   ↓ SELECT * FROM users WHERE username = ?
-[Auth Service]
-   ↓ Verify password (BCrypt.check)
-   ↓ Generate JWT token
-   ↓ {
-   ↓   sub: userId,
-   ↓   username: username,
-   ↓   role: role,
-   ↓   exp: timestamp + 24h
-   ↓ }
-   ↓ Return token
-[API Gateway]
-   ↓ Forward response
-[Client]
-   ✓ Receives JWT token
+Client → POST /auth/login → API Gateway → Auth Service
+Auth Service: busca usuário → verifica BCrypt → gera JWT (HS512, 24h)
+Auth Service → retorna { token, userId, username, role }
 ```
 
-### 3. Acesso a Recurso Protegido
-
+### Acesso a recurso protegido
 ```
-[Client]
-   ↓ GET /users
-   ↓ Header: Authorization: Bearer <token>
-[API Gateway]
-   ↓ JwtAuthenticationFilter
-   ↓ Extract token from header
-   ↓ Validate token signature
-   ↓ Validate token expiration
-   ↓ Extract userId from token
-   ↓ Add header: X-User-Id: <userId>
-   ↓ Route: /users/** → USER-SERVICE
-[User Service]
-   ↓ Read X-User-Id header
-   ↓ Process request
-[PostgreSQL - user_db]
-   ↓ SELECT * FROM users
-[User Service]
-   ↓ Return data
-[API Gateway]
-   ↓ Forward response
-[Client]
-   ✓ Receives user data
+Client → GET /users (Authorization: Bearer <token>)
+→ API Gateway: extrai token → valida assinatura HS512 → valida expiração
+→ User Service: recebe request autenticado → processa → retorna dados
 ```
 
 ---
 
-## Padrões de Arquitetura Implementados
+## Estrutura de Diretórios
 
-### 1. API Gateway Pattern
-**Problema:** Múltiplos microserviços com endpoints diferentes  
-**Solução:** Ponto de entrada único que roteia para serviços corretos  
-**Benefícios:**
-- Simplifica cliente (um único endpoint)
-- Centraliza autenticação
-- Facilita versionamento
-- Permite rate limiting centralizado
-
-### 2. Service Discovery (Registry Pattern)
-**Problema:** Serviços em endereços dinâmicos  
-**Solução:** Eureka Server mantém registro de todos os serviços  
-**Benefícios:**
-- Load balancing automático
-- Failover
-- Serviços se registram automaticamente
-- Health checks
-
-### 3. Circuit Breaker (opcional, configurável)
-**Problema:** Falha em cascata quando um serviço cai  
-**Solução:** Resilience4j detecta e previne chamadas a serviços problemáticos  
-**Benefícios:**
-- Failover gracioso
-- Timeout handling
-- Retry logic
-
-### 4. Database per Service
-**Problema:** Acoplamento via banco compartilhado  
-**Solução:** Cada serviço tem seu próprio banco  
-**Benefícios:**
-- Isolamento de dados
-- Escalabilidade independente
-- Tecnologias diferentes por serviço
+```
+microservices-gateway-auth/
+├── docker-compose.yml          # Orquestração dos serviços
+├── .env                        # Secrets (não commitado)
+├── .gitignore
+├── pom.xml                     # POM raiz (parent)
+├── scripts/
+│   └── init-databases.sql      # Script de inicialização do banco
+├── eureka-server/
+│   ├── Dockerfile
+│   └── src/
+├── auth-service/
+│   ├── Dockerfile              # Inclui curl para healthcheck
+│   └── src/
+│       └── main/java/com/tharsis/auth/
+│           ├── config/SecurityConfig.java   # /auth/**, /actuator/** público
+│           └── security/JwtUtil.java
+├── user-service/
+│   ├── Dockerfile              # Inclui curl para healthcheck
+│   └── src/
+│       └── main/java/com/tharsis/user/
+│           ├── config/SecurityConfig.java
+│           └── security/
+│               ├── JwtUtil.java
+│               └── JwtAuthFilter.java
+└── api-gateway/
+    ├── Dockerfile
+    └── src/
+```
 
 ---
 
-## Decisões de Design
+## Configuração de Healthchecks
 
-### Por que Spring Cloud Gateway?
-- ✅ Reativo (WebFlux) - alta performance
-- ✅ Filtros customizáveis
-- ✅ Integração nativa com Eureka
-- ✅ Configuração declarativa
+Todos os serviços têm healthcheck configurado:
 
-### Por que JWT?
-- ✅ Stateless authentication
-- ✅ Sem necessidade de sessão no servidor
-- ✅ Escalável horizontalmente
-- ✅ Pode incluir claims customizados
+| Serviço | Endpoint | Start Period |
+|---------|----------|-------------|
+| postgres | `pg_isready` | — |
+| eureka-server | `curl /actuator/health` | 30s |
+| auth-service | `curl /actuator/health` | 60s |
+| user-service | `curl /actuator/health` | 60s |
+| api-gateway | `curl /actuator/health` | 60s |
 
-### Por que PostgreSQL?
-- ✅ ACID compliant
-- ✅ Suporte a JSON (futuras expansões)
-- ✅ Open source
-- ✅ Amplamente usado em produção
-
----
-
-## Escalabilidade
-
-### Escalabilidade Horizontal
-
-Cada serviço pode ser escalado independentemente:
-
-```
-┌─────────────┐
-│ API Gateway │
-│  (3 inst.)  │
-└──────┬──────┘
-       │
-   ┌───┴───┐
-   ▼       ▼
-┌────┐   ┌────┐   ┌────┐
-│ A1 │   │ A2 │   │ A3 │  Auth Service (3 instâncias)
-└────┘   └────┘   └────┘
-
-┌────┐   ┌────┐
-│ U1 │   │ U2 │  User Service (2 instâncias)
-└────┘   └────┘
-```
-
-Eureka faz load balancing automático entre instâncias.
-
-### Pontos de Atenção
-
-1. **Database Bottleneck**
-   - Solução: Connection pooling, read replicas
-
-2. **Gateway Single Point of Failure**
-   - Solução: Múltiplas instâncias do gateway com load balancer
-
-3. **Eureka Downtime**
-   - Solução: Cliente tem cache de serviços registrados
+O `api-gateway` só sobe após auth-service e user-service estarem **healthy**.
 
 ---
 
 ## Segurança
 
-### Camadas de Segurança
+### Rotas públicas (sem JWT)
+- `POST /auth/register`
+- `POST /auth/login`
+- `GET /actuator/health` (todos os serviços)
 
-1. **Gateway Level**
-   - CORS configuration
-   - Rate limiting
-   - JWT validation
+### Rotas protegidas (requer JWT válido)
+- `GET /users`
+- `GET /users/{id}`
+- `POST /users`
+- `PUT /users/{id}`
+- `DELETE /users/{id}`
 
-2. **Service Level**
-   - Input validation
-   - SQL injection prevention (JPA)
-   - XSS prevention
+### JWT
+- Algoritmo: **HS512**
+- Expiração: **24 horas**
+- Claims: `sub` (userId), `username`, `role`
+- Secret: configurado via variável de ambiente `JWT_SECRET`
 
-3. **Database Level**
-   - Credenciais separadas por serviço
-   - Principle of least privilege
+### RBAC — Roles disponíveis
+- `ROLE_ADMIN`
+- `ROLE_MANAGER`
+- `ROLE_SUB`
+- `ROLE_USER` / `USER`
 
-### Melhorias Futuras
+---
 
+## Decisões de Design
+
+### Por que um banco compartilhado?
+Auth-service e user-service compartilham o `auth_db` nesta versão para simplificar o setup inicial. O ideal para produção em escala seria um banco por serviço.
+
+### Por que Spring Cloud Gateway?
+Reativo (WebFlux), integração nativa com Eureka, filtros customizáveis para JWT.
+
+### Por que JWT stateless?
+Sem necessidade de sessão no servidor, escalável horizontalmente, claims customizados (role, username).
+
+---
+
+## Melhorias Futuras
+
+- [ ] Banco de dados separado por serviço
+- [ ] Refresh Tokens
+- [ ] Redis para invalidação de tokens
+- [ ] Rate Limiting no Gateway
 - [ ] HTTPS/TLS
-- [ ] OAuth2/OpenID Connect
-- [ ] API Keys para clientes
-- [ ] Audit logging
-- [ ] Secrets management (Vault)
-
----
-
-## Monitoramento e Observabilidade
-
-### Health Checks
-
-```
-# Gateway
-GET http://localhost:8080/actuator/health
-
-# Auth Service
-GET http://localhost:8081/actuator/health
-
-# User Service
-GET http://localhost:8082/actuator/health
-```
-
-### Métricas (Futuro)
-
-- Prometheus + Grafana
-- Request rate
-- Error rate
-- Latency percentiles
-- JVM metrics
-
-### Logging
-
-- Centralized logging (ELK stack)
-- Correlation IDs para tracing
-- Structured logging (JSON)
-
----
-
-## Deployment
-
-### Kubernetes (Futuro)
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: auth-service
-spec:
-  replicas: 3
-  template:
-    spec:
-      containers:
-      - name: auth-service
-        image: auth-service:1.0.0
-        ports:
-        - containerPort: 8081
-```
-
-### Cloud Providers
-
-- **AWS:** ECS, EKS
-- **GCP:** GKE, Cloud Run
-- **Azure:** AKS
-
----
-
-## Referências
-
-- [Microservices Patterns](https://microservices.io)
-- [Spring Cloud Documentation](https://spring.io/projects/spring-cloud)
-- [The Twelve-Factor App](https://12factor.net)
-- [API Gateway Pattern](https://microservices.io/patterns/apigateway.html)
+- [ ] Distributed Tracing (Zipkin)
+- [ ] Monitoring (Prometheus + Grafana)
+- [ ] CI/CD com GitHub Actions
+- [ ] Deploy em Kubernetes
