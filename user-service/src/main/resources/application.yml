@@ -23,5 +23,5 @@ eureka:
       defaultZone: http://eureka-server:8761/eureka/
 
 jwt:
-  secret: "zdtlY9V7X8Pq2M5N6B3C4V5B6N7M8J9K0L1A2S3D4F5G6H7J8K9L0Q1W2E3R4T5Y"
-  expiration: 86400000
+  secret: ${JWT_SECRET}
+  expiration: ${JWT_EXPIRATION:86400000}
